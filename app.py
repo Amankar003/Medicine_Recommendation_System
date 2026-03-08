@@ -123,11 +123,11 @@ symptom_order = list(symptoms_dict.keys())
 # -----------------------------
 base = os.path.dirname(__file__)
 
-description = pd.read_csv(os.path.join(base,"datasets","description.csv"))
-precautions = pd.read_csv(os.path.join(base,"datasets","precautions_df.csv"))
-medications = pd.read_csv(os.path.join(base,"datasets","medications.csv"))
-diets = pd.read_csv(os.path.join(base,"datasets","diets.csv"))
-workout = pd.read_csv(os.path.join(base,"datasets","workout_df.csv"))
+description = pd.read_csv(os.path.join(base,"Datasets","description.csv"))
+precautions = pd.read_csv(os.path.join(base,"Datasets","precautions_df.csv"))
+medications = pd.read_csv(os.path.join(base,"Datasets","medications.csv"))
+diets = pd.read_csv(os.path.join(base,"Datasets","diets.csv"))
+workout = pd.read_csv(os.path.join(base,"Datasets","workout_df.csv"))
 
 # -----------------------------
 # HELPER FUNCTION
