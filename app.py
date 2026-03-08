@@ -2,14 +2,77 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import pickle
+import os
+import plotly.express as px
+from fpdf import FPDF
+import tempfile
 
 # -----------------------------
-# Load SVC model
+# PAGE CONFIG
+# -----------------------------
+st.set_page_config(
+    page_title="AI Medical Disease Predictor",
+    page_icon="🩺",
+    layout="wide"
+)
+
+# -----------------------------
+# DARK MODE
+# -----------------------------
+dark_mode = st.sidebar.toggle("🌙 Dark Mode")
+
+if dark_mode:
+    bg_color = "#0e1117"
+    card_color = "rgba(255,255,255,0.05)"
+    text_color = "white"
+else:
+    bg_color = "#f3f6fb"
+    card_color = "rgba(255,255,255,0.7)"
+    text_color = "black"
+
+# -----------------------------
+# CSS (GLASSMORPHISM)
+# -----------------------------
+st.markdown(f"""
+<style>
+
+.stApp {{
+background:{bg_color};
+}}
+
+.glass {{
+backdrop-filter: blur(15px);
+background:{card_color};
+border-radius:15px;
+padding:25px;
+box-shadow:0px 8px 25px rgba(0,0,0,0.15);
+margin-bottom:20px;
+}}
+
+.title {{
+font-size:48px;
+font-weight:700;
+text-align:center;
+color:{text_color};
+}}
+
+.subtitle {{
+text-align:center;
+font-size:18px;
+color:gray;
+margin-bottom:25px;
+}}
+
+</style>
+""", unsafe_allow_html=True)
+
+# -----------------------------
+# LOAD MODEL
 # -----------------------------
 svc = pickle.load(open("svc.pkl", "rb"))
 
 # -----------------------------
-# Updated symptom_dict
+# SYMPTOMS
 # -----------------------------
 symptoms_dict = {
     'itching': 0, 'skin_rash': 1, 'nodal_skin_eruptions': 2, 'continuous_sneezing': 3,
@@ -53,127 +116,190 @@ symptoms_dict = {
     'red_sore_around_nose': 130, 'yellow_crust_ooze': 131
 }
 
-symptom_order = [k for k, v in sorted(symptoms_dict.items(), key=lambda x: x[1])]
+symptom_order = list(symptoms_dict.keys())
 
 # -----------------------------
-# Load CSV files
+# LOAD DATASETS
 # -----------------------------
-description = pd.read_csv("datasets/description.csv")
-precautions = pd.read_csv("datasets/precautions_df.csv")
-workout = pd.read_csv("datasets/workout_df.csv")
-medications = pd.read_csv("datasets/medications.csv")
-diets = pd.read_csv("datasets/diets.csv")
+base = os.path.dirname(__file__)
+
+description = pd.read_csv(os.path.join(base,"datasets","description.csv"))
+precautions = pd.read_csv(os.path.join(base,"datasets","precautions_df.csv"))
+medications = pd.read_csv(os.path.join(base,"datasets","medications.csv"))
+diets = pd.read_csv(os.path.join(base,"datasets","diets.csv"))
+workout = pd.read_csv(os.path.join(base,"datasets","workout_df.csv"))
 
 # -----------------------------
-# Helper function
+# HELPER FUNCTION
 # -----------------------------
 def helper(dis):
-    desc = " ".join(description[description['Disease'] == dis]['Description'].values)
 
-    pre_df = precautions[precautions['Disease'] == dis][['Precaution_1','Precaution_2','Precaution_3','Precaution_4']]
-    pre = [item for sublist in pre_df.values for item in sublist if str(item) != 'nan']
+    desc = " ".join(description[description['Disease']==dis]['Description'])
 
-    med = medications[medications['Disease'] == dis]['Medication'].values
-    diet = diets[diets['Disease'] == dis]['Diet'].values
-    work = workout[workout['disease'] == dis]['workout'].values
+    pre = precautions[precautions['Disease']==dis].iloc[:,1:].values.flatten()
 
-    return desc, pre, med, diet, work
+    med = medications[medications['Disease']==dis]['Medication'].values
 
-# -----------------------------
-# Sidebar navigation
-# -----------------------------
-st.sidebar.title("Navigation")
-page = st.sidebar.selectbox("Go to", ["Disease Prediction", "About"])
+    diet = diets[diets['Disease']==dis]['Diet'].values
+
+    work = workout[workout['disease']==dis]['workout'].values
+
+    return desc,pre,med,diet,work
 
 # -----------------------------
-# Disease Prediction Page
+# PDF GENERATOR
 # -----------------------------
-if page == "Disease Prediction":
-    st.title("🩺 Medical Disease Prediction System")
-    st.write("Select symptoms from the list below:")
+def generate_pdf(disease, desc, pre, med, diet, work):
 
-    selected_symptoms = st.multiselect("Symptoms", symptom_order)
+    pdf = FPDF()
+    pdf.add_page()
 
-    if st.button("Predict"):
-        if len(selected_symptoms) == 0:
-            st.error("Please select at least one symptom!")
-        else:
-            input_vector = np.zeros(len(symptom_order))
-            for symptom in selected_symptoms:
-                input_vector[symptoms_dict[symptom]] = 1
+    pdf.set_font("Arial","B",16)
+    pdf.cell(0,10,"AI Medical Report",ln=True,align="C")
 
-            pred = svc.predict([input_vector])[0]
-            desc, pre, med, diet, work = helper(pred)
+    pdf.ln(5)
 
-            # -----------------------------
-            # Display in structured layout
-            # -----------------------------
-            st.success(f"### 🧾 Predicted Disease: **{pred}**")
+    pdf.set_font("Arial","B",12)
+    pdf.cell(0,10,f"Predicted Disease: {disease}",ln=True)
 
-            with st.expander("📄 Description"):
-                st.write(desc)
+    pdf.set_font("Arial","",11)
 
-            with st.expander("🛡 Precautions"):
-                for p in pre:
-                    st.write(f"- {p}")
+    pdf.multi_cell(0,8,f"\nDescription:\n{desc}")
 
-            with st.expander("💊 Medications"):
-                for m in med:
-                    st.write(f"- {m}")
+    pdf.multi_cell(0,8,"\nPrecautions:\n" + "\n".join([str(x) for x in pre if str(x)!='nan']))
 
-            with st.expander("🥗 Recommended Diet"):
-                for d in diet:
-                    st.write(f"- {d}")
+    pdf.multi_cell(0,8,"\nMedications:\n" + "\n".join([str(x) for x in med]))
 
-            with st.expander("🏃 Workout"):
-                for w in work:
-                    st.write(f"- {w}")
+    pdf.multi_cell(0,8,"\nDiet:\n" + "\n".join([str(x) for x in diet]))
 
-            # -----------------------------
-            # Downloadable report
-            # -----------------------------
-            report = f"""
-Predicted Disease: {pred}
+    pdf.multi_cell(0,8,"\nWorkout:\n" + "\n".join([str(x) for x in work]))
 
-Description:
-{desc}
+    tmp = tempfile.NamedTemporaryFile(delete=False,suffix=".pdf")
+    pdf.output(tmp.name)
 
-Precautions:
-{', '.join(pre)}
-
-Medications:
-{', '.join(med)}
-
-Diet:
-{', '.join(diet)}
-
-Workout:
-{', '.join(work)}
-"""
-            st.download_button(
-                label="📥 Download Report",
-                data=report,
-                file_name=f"{pred}_report.txt",
-                mime="text/plain"
-            )
+    return tmp.name
 
 # -----------------------------
-# About Page
+# HEADER
 # -----------------------------
-if page == "About":
-    st.title("ℹ About")
-    st.subheader("About Developer")
-    st.write("""
-👨‍💻 **Name:** Aman Kar  
-📧 **Email:** amkar125@gmail.com  
-💻 **About me:** Aman here — ML/AI learner, coder, designer, gamer & someone who loves building cool stuff. Learning, experimenting, creating — everyday.
-    """)
+col1,col2 = st.columns([3,1])
 
-    st.subheader("About Product")
-    st.write("""
-This Medical Disease Prediction System predicts possible diseases based on selected symptoms.
-- Uses trained Support Vector Classifier model
-- Provides structured description, precautions, medications, diet, and workout recommendations
-- User-friendly interface with multi-select and expandable sections
-- Report can be downloaded by the user
-    """)
+with col1:
+    st.markdown('<div class="title">🩺 AI Medical Disease Predictor</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Select symptoms and let AI predict disease</div>', unsafe_allow_html=True)
+
+with col2:
+    st.image(
+    "https://cdn-icons-png.flaticon.com/512/387/387561.png",
+    width=120
+    )
+
+# -----------------------------
+# SYMPTOM SEARCH
+# -----------------------------
+st.markdown('<div class="glass">', unsafe_allow_html=True)
+
+search = st.text_input("🔎 Search symptom")
+
+filtered = [s for s in symptom_order if search.lower() in s.lower()]
+
+selected_symptoms = st.multiselect(
+"Select Symptoms",
+filtered if search else symptom_order
+)
+
+predict = st.button("Predict Disease")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# -----------------------------
+# PREDICTION
+# -----------------------------
+if predict:
+
+    input_vector = np.zeros(len(symptom_order))
+
+    for s in selected_symptoms:
+        input_vector[symptoms_dict[s]] = 1
+
+    pred = svc.predict([input_vector])[0]
+
+    desc,pre,med,diet,work = helper(pred)
+
+    st.success(f"Predicted Disease: {pred}")
+
+    # -----------------------------
+    # PROBABILITY CHART
+    # -----------------------------
+    probs = svc.decision_function([input_vector])[0]
+
+    fig = px.bar(
+        x=[pred],
+        y=[max(probs)],
+        labels={'x':'Disease','y':'Confidence'}
+    )
+
+    st.plotly_chart(fig,use_container_width=True)
+
+    # -----------------------------
+    # STRUCTURED RESULTS
+    # -----------------------------
+    st.markdown("## 📋 Medical Report")
+
+    col1,col2 = st.columns(2)
+
+    with col1:
+
+        st.markdown("### 📄 Description")
+        st.info(desc)
+
+        st.markdown("### 🛡 Precautions")
+
+        pre_df = pd.DataFrame(
+            [p for p in pre if str(p)!='nan'],
+            columns=["Precautions"]
+        )
+
+        st.table(pre_df)
+
+    with col2:
+
+        st.markdown("### 💊 Medications")
+
+        med_df = pd.DataFrame(
+            med,
+            columns=["Medicines"]
+        )
+
+        st.table(med_df)
+
+        st.markdown("### 🥗 Diet")
+
+        diet_df = pd.DataFrame(
+            diet,
+            columns=["Recommended Diet"]
+        )
+
+        st.table(diet_df)
+
+    st.markdown("### 🏃 Workout")
+
+    work_df = pd.DataFrame(
+        work,
+        columns=["Exercises"]
+    )
+
+    st.table(work_df)
+
+    # -----------------------------
+    # PDF DOWNLOAD
+    # -----------------------------
+    pdf_path = generate_pdf(pred, desc, pre, med, diet, work)
+
+    with open(pdf_path, "rb") as f:
+        st.download_button(
+            "⬇ Download Medical Report (PDF)",
+            f,
+            file_name="medical_report.pdf",
+            mime="application/pdf"
+        )
